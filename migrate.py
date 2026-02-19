@@ -58,6 +58,8 @@ def main():
     stats = {"success": 0, "failed": 0}
     total_rows = len(rows)
 
+    stories_by_status = {}
+
     logging.info(f"--- Processing {total_rows} User Stories 🔄 ---")
 
     for i, row in enumerate(rows, 1):
@@ -101,6 +103,9 @@ def main():
                 comment_map=comments
             )
 
+            # Track story IDs per status for bulk reordering later
+            stories_by_status.setdefault(status_id, []).append(story.id)
+
             # Handle Attachments
             if env.DOWNLOAD_ATTACHMENTS:
                 # Find all attachment columns
@@ -124,6 +129,24 @@ def main():
         except Exception as e:
              # Error logged in service usually, but catch here to continue
             stats["failed"] += 1
+
+    logging.info(f"\n--- Reorder User Stories 🔄 ---")
+
+    for status_id, story_ids in stories_by_status.items():
+        # Determine current first story in column if needed
+        existing_stories = taiga_service.api.user_stories.list(
+            project=project.id, status=status_id
+        )
+        first_story_id = None
+        if existing_stories:
+            # pick the smallest ID not in the newly created list (topmost story in column)
+            first_story_id = min(
+                (s.id for s in existing_stories if s.id not in story_ids),
+                default=None
+            )
+
+        # Move new stories on top
+        taiga_service.bulk_reorder_top(project.id, status_id, story_ids, first_story_id)
 
     logging.info(f"\n--- FINAL SUMMARY ---")
     logging.info(f"Success: {stats['success']} ✅")

@@ -152,3 +152,35 @@ class TaigaService:
     def attach_file(self, story, file_path):
         if story and file_path:
             story.attach(str(file_path))
+
+    def bulk_reorder_top(self, project_id, status_id, new_story_ids, first_story_id=None):
+        """
+        Moves the newly created stories to the top of the Kanban column.
+        """
+        if not new_story_ids:
+            return
+
+        payload = {
+            "project_id": project_id,
+            "status_id": status_id,
+            "bulk_userstories": list(reversed(new_story_ids)),  # newest first
+        }
+        if first_story_id:
+            payload["before_userstory_id"] = first_story_id
+
+        try:
+            import requests
+            headers = {
+                "Authorization": f"Bearer {self.api.token}",
+                "Content-Type": "application/json"
+            }
+            # Ensure host doesn't have trailing slash and add api/v1
+            host = self.api.host.rstrip('/')
+            url = f"{host}/api/v1/userstories/bulk_update_kanban_order"
+
+            response = requests.post(url, json=payload, headers=headers)
+            response.raise_for_status()
+
+            logging.info(f"Reordered {len(new_story_ids)} stories ✅")
+        except Exception as e:
+            logging.error(f"Bulk reorder failed for status {status_id}: {e} ❌")
